@@ -7,8 +7,6 @@ bldblu="\e[1;34m" # Blue
 bldcyn="\e[1;36m" # Cyan
 
 repos="$HOME/.homesick/repos"
-mkdir -p "$repos"
-
 
 # Get the repo name from an URL
 function parse_url {
@@ -22,23 +20,23 @@ function parse_url {
 
 function clone {
 	repo_path="$repos/`parse_url $1`"
-	test -e $repo_path && die "      $bldblu exists $txtdef $repo_path"
+	test -e $repo_path && die "     $bldblu exists $txtdef $repo_path"
 	if [ -z "$B_PRETEND" ]; then
-          	if [ -n "$B_QUIET" ]; then
+		if [ -n "$B_QUIET" ]; then
 			git clone --quiet $1 $repo_path
-	  	else
+	else
 			git clone $1 $repo_path
 		fi
 	fi
 	log "git clone for $repo_path done."
 	pushd $repo_path > /dev/null
 	if [ -z "$B_PRETEND" ]; then
-                if [ -n "$B_QUIET" ]; then
+		if [ -n "$B_QUIET" ]; then
 			git submodule --quiet update --init
-                else
+		else
 			git submodule update --init
-                fi
-        fi
+		fi
+	fi
 	log "git init for submodule(s)"
 	popd > /dev/null
 }
@@ -47,23 +45,24 @@ function generate {
 	if [ -z "$B_PRETEND" ]; then
 		mkdir -p $1
 		pushd $1 > /dev/null
-        	if [ -n "$B_QUIET" ]; then
+		if [ -n "$B_QUIET" ]; then
 			git init --quiet
 		else
 			git init
 		fi
 		mkdir -p home
-	end
+		popd > /dev/null
+	fi
 	log "git init for `pwd` && mkdir home"
-	popd > /dev/null
 }
 
 function list {
-	pushd $repos > /dev/null
-        test `find ./ -type d |wc -l` -lt 2 && die "       $bldblu no castles exist for homesick in: $txtdef $repos" 
+	if [ `find ./ -type d | wc -l` -lt 2 ]; then
+		die "      $bldred error $txtdef no castles exist for homesick in: $repos"
+	fi
 	for repo in `echo *`; do
 		pushd $repo > /dev/null
-		printf "   $bldcyn $repo $txtdef `git config remote.origin.url`\n"
+		printf "$bldcyn%12s$txtdef  %s\n" "$repo" "`git config remote.origin.url`"
 		popd > /dev/null
 	done
 	popd > /dev/null
@@ -74,7 +73,7 @@ function pull {
 	castle_exists 'pull' $1
 	pushd $repo > /dev/null
 	if [ -z "$B_PRETEND" ]; then
-       		if [ -n "$B_QUIET" ]; then
+		if [ -n "$B_QUIET" ]; then
 			git pull --quiet
 			git submodule --quiet update --init 
 		else
@@ -88,7 +87,7 @@ function pull {
 
 function symlink {
 	if [[ -z "$1" ]]; then
-		die "homeshick symlink requires at least 1 argument: \"homeshick symlink NAME\"."
+		die "$0 symlink requires at least 1 argument: \"homeshick symlink NAME\"."
 	fi
 	castle_exists 'symlink' $1
 	repo="$repos/$1/home"
@@ -100,27 +99,33 @@ function symlink {
 			log "  $bldblu identical $txtdef $file"
 			continue
 		fi
-		if [[ -d $HOME/$file ]]; then
-			direrrors="$direrrors\n$file"
-			continue
-		fi
-		log "    $bldgrn symlink $txtdef $file"
-	 	
-		if [ -z "$B_PRETEND" ]; then
-			if [ -z "$B_FORCE" ]; then
-		  		ln -si $repo/$file $HOME/$file
-			else
-		  		log "   $bldblu Forcefully overwritting: $txtdef $direrrors \n"
-		  		ln -sfi $repo/$file $HOME/$file
+		
+		if [ -e $HOME/$file ]; then
+			if [ -n "$B_SKIP" ]; then
+				log "     $bldred exists $txtdef $file"
+				continue
 			fi
+			if [ -z "$B_FORCE" ]; then
+				log "   $bldred conflict $txtdef $file exists"
+				read -p "Overwrite $file? [yN]" overwrite
+				if [[ ! $overwrite =~ [Yy] ]]; then
+					continue
+				fi
+			else
+				log "  $bldred overwrite $txtdef $file"
+			fi
+			test -z "$B_PRETEND" && rm -rf "$HOME/$file"
+		else
+			log "    $bldgrn symlink $txtdef $file"
 		fi
+		
+		test -z "$B_PRETEND" && ln -s $repo/$file $HOME/$file
 	done
 	shopt -u dotglob
 	if [[ -n "$direrrors" && -z "$B_FORCE" ]]; then
-		printf "The following directories already exist and will only\n" >&2
+		printf "\nThe following directories already exist and will only\n" >&2
 		printf "be overwritten, if you delete or move them manually:\n" >&2
-		printf $direrrors >&2
-		printf '\n' >&2
+		printf "$direrrors\n" >&2
 	fi
 	popd > /dev/null
 }
@@ -133,18 +138,18 @@ function track {
 	repo="$repos/$2/home"
 	newfile="$repo/$1"
 	if [[ ! -e "$1" ]]; then
-		die "   $bldred error $txtdef The file $1 does not exist."
+		die "      $bldred error $txtdef The file $1 does not exist."
 	fi
 	if [[ -e "$newfile" && -z "$B_FORCE" ]]; then
-		die "   $bldred error $txtdef The file $1 already exists in the castle $2."
+		die "      $bldred error $txtdef The file $1 already exists in the castle $2."
 	fi
 	if [ -z "$B_PRETEND" ]; then
 		if [ -z "$B_FORCE" ]; then
-	  		mv "$1" "$newfile"
-	  		ln -s "$newfile" $1
+			mv "$1" "$newfile"
+			ln -s "$newfile" $1
 		else
-	  		mv -f "$1" "$newfile"
-	  		ln -sf "$newfile" $1
+			mv -f "$1" "$newfile"
+			ln -sf "$newfile" $1
 		fi
 	fi
 	log "    $bldgrn symlink $txtdef $newfile to $1"
@@ -152,7 +157,7 @@ function track {
 
 function castle_exists {
 	if [[ ! -d "$repos/$2/home" ]]; then
-		die "  $bldred error $txtdef Could not $1 $2, expected $repo to exist and contain dotfiles"
+		die "      $bldred error $txtdef Could not $1 $2, expected $repo to exist and contain dotfiles"
 	fi
 }
 
@@ -166,7 +171,7 @@ function extend_help {
 		symlink)  printf "Usage:\n  $0 symlink NAME"  ;;
 		track)    printf "Usage:\n  $0 track FILE CASTLE"  ;;
 		*)    help  ;;
-        esac
+		esac
 	printf "\n\n"
 	runtime
 }
@@ -189,9 +194,10 @@ EOM
 function runtime {
 cat <<EOM
  Runtime options:
+   -q, [--quiet]    # Suppress status output
+   -s, [--skip]     # Skip files that already exist
    -f, [--force]    # Overwrite files that already exist
    -p, [--pretend]  # Run but do not make any changes
-   -q, [--quiet]    # Suppress status output
 
 EOM
 }
@@ -208,7 +214,7 @@ function die {
 }
 
 function log {
-        if [ -z "$B_QUIET" ]; then
+		if [ -z "$B_QUIET" ]; then
 		for line in "$@"; do
 			printf "$line\n"
 		done
@@ -218,49 +224,54 @@ function log {
 
 test -x `which git` || die "       $bldred git not found in path $txtdef "
 
-for arg; do
-    delim=""
-    case "$arg" in
-       clone)     args="${args}-c ";;
-       generate)  args="${args}-g ";;
-       list)      args="${args}-l ";;
-       pull)      args="${args}-p ";;
-       symlink)   args="${args}-s ";;
-       track)     args="${args}-t ";;
+mkdir -p "$repos"
 
-       help)      extend_help $2 
-		  exit 0	   ;;
-       --help)    extend_help      
-                  exit 0           ;;
-       --quiet)   args="${args}-q ";;
-       --pretend) args="${args}-t ";;
-       --force)   args="${args}-f ";;
-       # pass through anything else
-       *) [[ "${arg:0:1}" == "-" ]] || delim="\""
-           args="${args}${delim}${arg}${delim} ";;
-    esac
+for arg; do
+	delim=""
+	case "$arg" in
+		clone)     args="${args}-c " ;;
+		generate)  args="${args}-g " ;;
+		list)      args="${args}-l " ;;
+		pull)      args="${args}-p " ;;
+		symlink)   args="${args}-s " ;;
+		track)     args="${args}-t " ;;
+		
+		help)      extend_help $2 
+		           exit 0            ;;
+		--help)    extend_help  
+		           exit 0            ;;
+		--quiet)   args="${args}-q " ;;
+		--skip)    args="${args}-i " ;;
+		--force)   args="${args}-f " ;;
+		--pretend) args="${args}-u " ;;
+		
+		# pass through anything else
+		*) [[ "${arg:0:1}" == "-" ]] || delim="\""
+		   args="${args}${delim}${arg}${delim} ";;
+	esac
 done
 
 # reset the translated args
 eval set -- $args
 # now we can process with getopt
 
-while getopts "c:g:lp:s:t:fktqhe:" opt; do
-case $opt in
-        c) clone $OPTARG    	;;
-        g) generate $OPTARG 	;;
-        l) list 	      	;;
-        p) pull $OPTARG     	;;
-        s) symlink $OPTARG  	;;
-        t) track $OPTARG 	;;
-        e) extend_help $OPTARG 	;;
-        f) B_FORCE=1		;;
-        t) B_PRETEND=1		;;
-        q) B_QUIET=1		;;
-        h) extend_help 
-                         exit 0 ;;
-        * ) notfound 
-                         exit 1 ;;
-    esac
+while getopts "c:g:lp:s:t:qifue:h" opt; do
+	case $opt in
+		c) clone $OPTARG       ;;
+		g) generate $OPTARG    ;;
+		l) list                ;;
+		p) pull $OPTARG        ;;
+		s) symlink $OPTARG     ;;
+		t) shift $(( OPTIND - 1 ))
+       track $OPTARG $1    ;;
+		q) B_QUIET=1           ;;
+		i) B_SKIP=1            ;;
+		f) B_FORCE=1           ;;
+		u) B_PRETEND=1         ;;
+		e) extend_help $OPTARG ;;
+		h) extend_help
+		   exit 0              ;;
+		* ) notfound
+		   exit 1              ;;
+	esac
 done
-
